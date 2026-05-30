@@ -1,0 +1,12 @@
+groups:
+  - name: test
+    rules:
+      - alert: FakeTargetDown
+        expr: up{job="fake-target"} == 0
+        for: 10s
+        labels:
+          severity: critical
+          instance: "localhost:9999"
+        annotations:
+          summary: "测试服务不可达"
+          description: "fake-target 没有响应，模拟真实告警"

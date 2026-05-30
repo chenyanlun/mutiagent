@@ -1,0 +1,7 @@
+route:
+    receiver: 'aiops-webhook'
+receivers:
+  - name: 'aiops-webhook'
+    webhook_configs:
+      - url: 'http://host.docker.internal:9900/api/v1/webhook/alertmanager'
+        send_resolved: false
