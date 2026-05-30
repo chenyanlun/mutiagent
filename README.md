@@ -2,7 +2,8 @@
 
 面向 OnCall / SRE 场景的多智能体智能运维诊断平台。
 
-项目视频 https://www.bilibili.com/video/BV182RCBGEod/
+参考学习并优化了这个项目
+参考：https://www.bilibili.com/video/BV182RCBGEod/
 
 项目基于 `FastAPI`、`LangGraph`、`RAG`、`Milvus`、`MCP` 和 DeepSeek / DashScope 兼容大模型构建。系统采用 **先选择 Skill，再规划诊断步骤，再调用工具执行，最后复盘生成报告** 的流程，可根据告警或故障描述自动选择合适的诊断策略，调用知识库和实时工具服务，输出结构化诊断报告。
 
