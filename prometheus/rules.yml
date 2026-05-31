@@ -10,3 +10,23 @@ groups:
         annotations:
           summary: "测试服务不可达"
           description: "fake-target 没有响应，模拟真实告警"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg(irate(windows_cpu_time_total{mode="idle"}[5m])) * 100) > 70
+        for: 10s
+        labels:
+          severity: warning
+          category: host_resource_diagnosis
+        annotations:
+          summary: "本地电脑 CPU 使用率有点高"
+          description: "CPU 使用率超过 70%，请检查是否有异常进程"
+
+      - alert: HighMemoryUsage
+        expr: (windows_memory_physical_total_bytes - windows_memory_available_bytes) / windows_memory_physical_total_bytes * 100 > 80
+        for: 10s
+        labels:
+          severity: warning
+          category: host_resource_diagnosis
+        annotations:
+          summary: "本地电脑内存使用率过高"
+          description: "内存使用率超过 80%，请检查是否有内存泄漏"

@@ -64,6 +64,7 @@ Report
 - **并行工具调用**：对互不依赖的只读工具进行并发执行，缩短多工具诊断等待时间。
 - **真实 Token 监控**：支持 DeepSeek / DashScope 流式 usage 回传，前端展示 input / output / total tokens。
 - **SSE 流式输出**：前端实时展示 Skill 选择、诊断计划、工具调用、token、耗时和最终报告。
+- **Prometheus + Alertmanager 无人值守自动诊断**：完整接入 Prometheus 监控栈，采集本地系统指标（CPU/内存/磁盘），告警触发后自动推送 Webhook，AIOps 后台异步诊断并生成结构化报告，无需人工介入。
 - **告警 Webhook**：支持 Alertmanager Webhook 触发后台诊断。
 
 ## 架构概览
@@ -184,6 +185,8 @@ flowchart TD
 | 会话记忆 | Redis，可选 |
 | 工具协议 | MCP / FastMCP |
 | 本机监控 | psutil |
+| 监控栈 | Prometheus + Alertmanager |
+| 系统指标采集 | windows_exporter |
 | 前端 | HTML + TailwindCSS + Vanilla JS |
 | 运行环境 | Python 3.11+ / Docker / Windows PowerShell |
 
@@ -256,7 +259,29 @@ powershell -ExecutionPolicy Bypass -File scripts\fetch_kb_corpus.ps1
 python scripts\convert_prometheus_alerts.py
 ```
 
-### 6. 启动应用
+### 6. 启动 Prometheus + Alertmanager 监控栈
+
+```powershell
+# 启动 Prometheus
+docker run -d --name prometheus -p 9090:9090 -v "$PWD/prometheus:/etc/prometheus" prom/prometheus:v3.2.1 --config.file=/etc/prometheus/prometheus.yml
+
+# 启动 Alertmanager
+docker run -d --name alertmanager -p 9093:9093 -v "$PWD/prometheus/alertmanager.yml:/etc/alertmanager/config.yml" prom/alertmanager:v0.28.1 --config.file=/etc/alertmanager/config.yml
+```
+
+如需监控本机真实指标（CPU/内存/磁盘），下载并启动 windows_exporter：
+
+```powershell
+# 下载（已包含在项目根目录可跳过）
+Invoke-WebRequest -Uri "https://github.com/prometheus-community/windows_exporter/releases/download/v0.30.4/windows_exporter-0.30.4-amd64.exe" -OutFile "windows_exporter.exe"
+
+# 启动采集
+.\windows_exporter.exe --collectors.enabled=cpu,memory,logical_disk,net,os,system
+```
+
+Prometheus 已配置 `windows-exporter` job 和 CPU/内存告警规则，启动后会自动采集并评估。
+
+### 7. 启动应用
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1
@@ -275,7 +300,12 @@ docker MCP    http://localhost:8011/mcp
 停止服务：
 
 ```powershell
+# 停止 AIOps 主服务
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1 -Stop
+
+# 停止监控栈（保留容器，明天可直接启动）
+docker stop prometheus
+docker stop alertmanager
 ```
 
 ## 访问地址
@@ -288,6 +318,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1 -Stop
 | 健康检查 | http://localhost:9900/api/v1/health |
 | 就绪检查 | http://localhost:9900/api/v1/health/ready |
 | Attu Milvus UI | http://localhost:8000 |
+| Prometheus UI | http://localhost:9090 |
+| Alertmanager UI | http://localhost:9093 |
+| Webhook 诊断历史 | http://localhost:9900/api/v1/webhook/history |
 
 ## 使用示例
 
@@ -307,7 +340,24 @@ Redis 实例 redis-master-01 内存使用率 98%，客户端连接被强制断�
 
 系统会结合 Redis SOP、Prometheus 告警知识库和工具返回的信息生成诊断报告。
 
-### Alertmanager Webhook 模拟
+### 真实系统监控自动诊断
+
+启动 `windows_exporter` 后，Prometheus 会实时采集本机 CPU/内存/磁盘指标。当资源使用率超过阈值时：
+
+1. **Prometheus** 触发 `HighCPUUsage` / `HighMemoryUsage` 告警
+2. **Alertmanager** 自动推送 Webhook 到 AIOps
+3. **AIOps** 后台自动诊断，调用 MCP 工具查当前进程、查知识库、LLM 分析根因
+4. 诊断报告自动写入 `data/alert_history.jsonl`
+
+查看诊断结果：
+
+```powershell
+python scripts\mock_alert.py --list-history
+```
+
+### Alertmanager Webhook 模拟（测试用）
+
+不依赖 Prometheus，直接模拟告警触发 AIOps 诊断：
 
 ```powershell
 python scripts\mock_alert.py --scenario redis
@@ -327,6 +377,8 @@ python scripts\mock_alert.py --list-history
 | 删除文档 | DELETE | `/api/v1/documents/{source}` |
 | 健康检查 | GET | `/api/v1/health` |
 | 就绪检查 | GET | `/api/v1/health/ready` |
+| Webhook 诊断历史 | GET | `/api/v1/webhook/history` |
+| 清空诊断历史 | DELETE | `/api/v1/webhook/history` |
 
 知识库上传和删除需要请求头：
 
@@ -344,6 +396,10 @@ multi_agent_github/
 ├── docs/sop/               # 内置 OnCall SOP
 ├── data/kb_corpus/         # RAG 开源语料
 ├── scripts/                # 知识库和告警模拟脚本
+├── prometheus/             # Prometheus + Alertmanager 配置
+│   ├── prometheus.yml
+│   ├── alertmanager.yml
+│   └── rules.yml
 ├── docker-compose.yml      # Milvus + etcd + MinIO + Attu + Redis
 ├── requirements.txt
 ├── .env.example

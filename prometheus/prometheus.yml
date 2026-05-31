@@ -13,4 +13,7 @@ scrape_configs:
       - targets: ['localhost:9090']  
   - job_name: 'fake-target'
     static_configs:
-      - targets: ['host.docker.internal:9999']      
+      - targets: ['host.docker.internal:9999'] 
+  - job_name: 'windows-exporter'
+    static_configs:
+      - targets: ['host.docker.internal:9182']     
